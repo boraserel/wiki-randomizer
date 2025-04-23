@@ -6,29 +6,47 @@ import Select from "react-select";
 const App = () => {
   const [articles, setArticles] = useState([]);
   const [lang, setLang] = useState("en");
+  const [isLoading, setIsLoading] = useState(false);
   const [seenArticles, setSeenArticles] = useState(() => {
     const saved = localStorage.getItem("seenArticles");
     return saved ? JSON.parse(saved) : [];
   });
 
   const fetchArticles = async () => {
+    setIsLoading(true);
+    const desiredCount = 10;
+    const minLength = 5000; // 5 dakikalık içerik için
+    const tempArticles = [];
+  
     try {
-      const res = await fetch(`https://${lang}.wikipedia.org/w/api.php?origin=*&action=query&format=json&generator=random&grnnamespace=0&grnlimit=10&prop=info&inprop=url`);
-      const data = await res.json();
-      const pages = Object.values(data.query.pages);
-
-      const filtered = pages.filter(
-        (page) => !seenArticles.includes(page.title)
-      );
-      const updatedArticles = filtered.map((page) => {
-        const count = page.length ? page.length : 0;
-        const readingTime = Math.ceil(count / 1200);
-        return { ...page, readingTime };
-      });
-
-      setArticles(updatedArticles);
+      while (tempArticles.length < desiredCount) {
+        const res = await fetch(`https://${lang}.wikipedia.org/w/api.php?origin=*&action=query&format=json&generator=random&grnnamespace=0&grnlimit=10&prop=info&inprop=url`);
+        const data = await res.json();
+  
+        if (!data.query?.pages) continue;
+  
+        const pages = Object.values(data.query.pages);
+  
+        const filtered = pages.filter(
+          (page) =>
+            !seenArticles.includes(page.title) &&
+            page.length >= minLength
+        );
+  
+        const withReadingTime = filtered.map((page) => {
+          const count = page.length || 0;
+          const readingTime = Math.ceil(count / 1200);
+          return { ...page, readingTime };
+        });
+  
+        tempArticles.push(...withReadingTime);
+      }
+  
+      setArticles(tempArticles.slice(0, desiredCount));
     } catch (err) {
       console.error("Error fetching articles:", err);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -114,6 +132,13 @@ const App = () => {
       </div>
 
       <div className="mt-5">
+        {isLoading && (
+          <div className="d-flex justify-content-center my-5">
+            <div className="spinner-border text-primary" role="status">
+              <span className="visually-hidden">Loading...</span>
+            </div>
+          </div>
+        )}
         {articles.map((page) => (
           <Card
             key={page.pageid}
